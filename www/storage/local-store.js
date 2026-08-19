@@ -224,6 +224,41 @@ function operationMatches(left, right) {
     && JSON.stringify(left.payload) === JSON.stringify(right.payload);
 }
 
+function sameJsonValue(left, right) {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameJsonValue(value, right[index]));
+  }
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => (
+      key === rightKeys[index] && sameJsonValue(left[key], right[key])
+    ));
+}
+
+export function classifyPendingRemote(pending, change) {
+  const remote = normalizeRemoteRecord(change);
+  const remoteOperation = change.operation || "upsert";
+  if (!pending) return "apply";
+  if (pending.operation === "delete" && remoteOperation === "delete") return "reconcile";
+  if (pending.operation === "upsert"
+    && remoteOperation === "upsert"
+    && Number(pending.position || 0) === remote.position
+    && sameJsonValue(pending.payload, remote.payload)) {
+    return "reconcile";
+  }
+  if (remoteOperation === "upsert"
+    && remote.version === Number(pending.expectedVersion || 0)) {
+    return "keep-local";
+  }
+  return "conflict";
+}
+
 export function acknowledgeOperations(sentOperations, appliedChanges, cursor, userId) {
   return enqueueWrite(async () => {
     const currentState = await readStores([RECORDS_STORE, OUTBOX_STORE, META_STORE]);
@@ -278,13 +313,26 @@ export function applyRemoteChanges(changes, cursor, userId, replace = false) {
     const conflicts = [];
     const database = await openDatabase();
     try {
-      const transaction = database.transaction([RECORDS_STORE, META_STORE], "readwrite");
+      const transaction = database.transaction(
+        [RECORDS_STORE, OUTBOX_STORE, META_STORE],
+        "readwrite",
+      );
       const completed = transactionDone(transaction);
       const recordsStore = transaction.objectStore(RECORDS_STORE);
+      const outboxStore = transaction.objectStore(OUTBOX_STORE);
       for (const change of changes) {
         const remote = normalizeRemoteRecord(change);
         remoteKeys.add(remote.recordKey);
-        if (pending.has(remote.recordKey)) {
+        const pendingOperation = pending.get(remote.recordKey);
+        const action = classifyPendingRemote(pendingOperation, change);
+        if (action === "reconcile") {
+          if (change.operation === "delete") recordsStore.delete(remote.recordKey);
+          else recordsStore.put(remote);
+          outboxStore.delete(remote.recordKey);
+          pending.delete(remote.recordKey);
+        } else if (action === "keep-local") {
+          continue;
+        } else if (action === "conflict") {
           conflicts.push({ remote, operation: change.operation || "upsert" });
         } else if (change.operation === "delete") {
           recordsStore.delete(remote.recordKey);

@@ -14,7 +14,7 @@ import {
   signUp,
   submitPrivacyRequest,
   synchronizePrivateState,
-} from "./storage.js?v=homealacarte-79";
+} from "./storage.js?v=homealacarte-80";
 import { translations } from "./translations.js?v=homealacarte-77";
 import {
   defaultLocale,

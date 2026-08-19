@@ -7,7 +7,7 @@ import {
   readSyncMeta,
   resolveLocalConflicts,
   writeLocalState,
-} from "./local-store.js?v=homealacarte-78";
+} from "./local-store.js?v=homealacarte-79";
 
 const POLL_INTERVAL_MS = 5_000;
 export const SYNC_BATCH_SIZE = 100;
@@ -35,10 +35,64 @@ function sameValue(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function sameJsonValue(left, right) {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameJsonValue(value, right[index]));
+  }
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => (
+      key === rightKeys[index] && sameJsonValue(left[key], right[key])
+    ));
+}
+
 function operationOrder(operation) {
   const deleting = operation.operation === "delete";
   const entityOrder = deleting ? DELETE_ENTITY_ORDER : UPSERT_ENTITY_ORDER;
   return (deleting ? 100 : 0) + (entityOrder.get(operation.entityType) ?? 60);
+}
+
+function syncRecordKey(entityType, entityId) {
+  return `${entityType}\u0000${entityId}`;
+}
+
+function operationMatchesRemote(operation, remote) {
+  return operation?.operation === "upsert"
+    && (remote?.operation || "upsert") === "upsert"
+    && Number(operation.position || 0) === Number(remote.position || 0)
+    && sameJsonValue(operation.payload, remote.payload);
+}
+
+export function partitionOperationConflicts(operations, conflicts = []) {
+  const sent = new Map(operations.map((operation) => [
+    operation.recordKey || syncRecordKey(operation.entityType, operation.entityId),
+    operation,
+  ]));
+  const reconciled = [];
+  const unresolved = [];
+  for (const remote of conflicts) {
+    const key = syncRecordKey(
+      remote.entity_type || remote.entityType,
+      remote.entity_id || remote.entityId,
+    );
+    const operation = sent.get(key);
+    if (operationMatchesRemote(operation, remote)) {
+      reconciled.push({
+        ...remote,
+        record_version: Number(remote.record_version ?? remote.version ?? 0),
+        operation: remote.operation || "upsert",
+      });
+    } else {
+      unresolved.push(remote);
+    }
+  }
+  return { reconciled, unresolved };
 }
 
 export function selectSyncBatch(operations, limit = SYNC_BATCH_SIZE) {
@@ -94,20 +148,25 @@ export function createRowSync({ remoteClient, emitStatus, notifyRemoteChange }) 
       emitStatus({ state: "saving", message: "" });
       const meta = await readSyncMeta();
       const result = await remoteClient.applyRemoteOperations(operations);
-      for (const change of result?.applied || []) {
+      const { reconciled, unresolved } = partitionOperationConflicts(
+        operations,
+        result?.conflicts || [],
+      );
+      const appliedChanges = [...(result?.applied || []), ...reconciled];
+      for (const change of appliedChanges) {
         const changeId = Number(change?.change_id || 0);
         if (changeId > 0) appliedChangeIds.add(changeId);
       }
       await acknowledgeOperations(
         operations,
-        result?.applied || [],
+        appliedChanges,
         Number(meta.cursor || 0),
         activeSession.user.id,
       );
-      if (result?.conflicts?.length) {
+      if (unresolved.length) {
         conflict = {
           kind: "rows",
-          rows: result.conflicts.map((remote) => ({
+          rows: unresolved.map((remote) => ({
             remote,
             operation: remote.operation || "upsert",
           })),
