@@ -74,6 +74,31 @@ assert.deepEqual(
   [{ key: "Home shop", spend: 7, count: 1 }],
 );
 
+const allAnalysis = buildSpendingAnalysis(
+  snapshot,
+  new Date("2026-09-10T12:00:00Z"),
+  "en",
+  { category: "all", store: "all" },
+);
+assert.equal(allAnalysis.categoryMonth, "all");
+assert.equal(allAnalysis.storeMonth, "all");
+assert.deepEqual(
+  allAnalysis.byCategory.map(({ key, spend, count }) => ({ key, spend, count })),
+  [
+    { key: "Produce", spend: 10, count: 1 },
+    { key: "Dairy", spend: 8, count: 2 },
+    { key: "Home", spend: 7, count: 1 },
+  ],
+);
+assert.deepEqual(
+  allAnalysis.byStore.map(({ key, spend, count }) => ({ key, spend, count })),
+  [
+    { key: "Market", spend: 15, count: 2 },
+    { key: "Home shop", spend: 7, count: 1 },
+    { key: "Corner shop", spend: 3, count: 1 },
+  ],
+);
+
 const [
   view,
   menuCss,
@@ -99,6 +124,9 @@ assert.match(view, /id="stock-head"/);
 assert.match(menuCss, /\.grocery-subview\.active \{ display: block/);
 assert.match(groceryCss, /\.purchase-list \{ overflow: visible; \}/);
 assert.match(spending, /data-spending-month/);
+assert.match(spending, /<option value="all"/);
+assert.match(spending, /entirePeriod: "Entire period"/);
+assert.match(spending, /entirePeriod: "Toute la période"/);
 assert.match(spending, /categoryDonut\(analysis\.byCategory, analysis\.bySubcategory/);
 assert.match(spendingCss, /\.spending-double-donut/);
 assert.match(spending, /<svg class="spending-donut-svg"/);
@@ -130,10 +158,10 @@ assert.match(stickyGroups, /ResizeObserver/);
 assert.match(stickyGroups, /purchase-sticky-controls/);
 assert.match(index, /switcher\.classList\.add\("sidebar-subnav"\)/);
 assert.match(index, /insertAdjacentElement\("afterend", switcher\)/);
-assert.match(index, /grocery-layout-followup\.css\?v=homealacarte-119/);
-assert.match(index, /grocery-sticky-groups\.js\?v=homealacarte-119/);
-assert.match(index, /menu-generator-presence\.css\?v=homealacarte-119/);
-assert.match(index, /app\.js\?v=homealacarte-119/);
-assert.match(index, />v119<\/small>/);
+assert.match(index, /grocery-layout-followup\.css\?v=homealacarte-120/);
+assert.match(index, /grocery-sticky-groups\.js\?v=homealacarte-120/);
+assert.match(index, /menu-generator-presence\.css\?v=homealacarte-120/);
+assert.match(index, /app\.js\?v=homealacarte-120/);
+assert.match(index, />v120<\/small>/);
 
 console.log("Grocery and menu use nested sidebar navigation, compact heading totals, page-scrolling tables, sticky group headings, independent spending-month filters, nested category spending data, and an interactive labelled spending donut with crisp separators and parent-category selection from either ring.");

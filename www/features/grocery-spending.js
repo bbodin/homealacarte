@@ -15,10 +15,11 @@ const STRINGS = {
     monthly: "Monthly spending",
     monthlyIntro: "Last 6 months",
     categories: "Spending by category",
-    categoriesIntro: "Selected month",
+    categoriesIntro: "Selected period",
     stores: "Spending by store",
-    storesIntro: "Selected month",
-    selectMonth: "Select month",
+    storesIntro: "Selected period",
+    selectMonth: "Select period",
+    entirePeriod: "Entire period",
     frequent: "Frequently purchased products",
     frequentIntro: "Across recorded purchase history",
     product: "Product",
@@ -47,10 +48,11 @@ const STRINGS = {
     monthly: "Dépenses mensuelles",
     monthlyIntro: "6 derniers mois",
     categories: "Dépenses par catégorie",
-    categoriesIntro: "Mois sélectionné",
+    categoriesIntro: "Période sélectionnée",
     stores: "Dépenses par magasin",
-    storesIntro: "Mois sélectionné",
-    selectMonth: "Sélectionner le mois",
+    storesIntro: "Période sélectionnée",
+    selectMonth: "Sélectionner la période",
+    entirePeriod: "Toute la période",
     frequent: "Produits achetés fréquemment",
     frequentIntro: "Sur l’historique des achats enregistrés",
     product: "Produit",
@@ -202,19 +204,16 @@ export function buildSpendingAnalysis(snapshot, referenceDate = new Date(), lang
   const dated = records.map((row) => ({ ...row, parsedDate: parseDateKey(row.date) }))
     .filter((row) => row.parsedDate);
   const inRange = (row, start, end) => row.parsedDate >= start && row.parsedDate < end;
-  const currentWeekRows = dated.filter((row) => inRange(row, weekStart, nextWeek));
-  const currentMonthRows = dated.filter((row) => inRange(row, currentMonth, nextMonth));
+  const currentWeekRows = dated.filter((row) => inRange(row, weekStart, nextWeek)), currentMonthRows = dated.filter((row) => inRange(row, currentMonth, nextMonth));
   const currentMonthKey = isoDate(currentMonth).slice(0, 7);
   const availableMonths = [...new Set(dated.map((row) => row.date.slice(0, 7)))]
     .filter((key) => /^\d{4}-\d{2}$/.test(key))
     .sort((left, right) => right.localeCompare(left));
   if (!availableMonths.includes(currentMonthKey)) availableMonths.unshift(currentMonthKey);
-  const selectedMonth = (requested) => availableMonths.includes(requested)
-    ? requested
-    : currentMonthKey;
-  const categoryMonth = selectedMonth(selectedMonths.category);
-  const storeMonth = selectedMonth(selectedMonths.store);
+  const selectedMonth = (requested) => requested === "all" || availableMonths.includes(requested) ? requested : currentMonthKey;
+  const categoryMonth = selectedMonth(selectedMonths.category), storeMonth = selectedMonth(selectedMonths.store);
   const rowsForMonth = (key) => {
+    if (key === "all") return dated;
     const start = parseDateKey(`${key}-01`);
     return dated.filter((row) => inRange(row, start, addUtcMonths(start, 1)));
   };
@@ -294,6 +293,7 @@ function monthSelect(kind, selected, months, language, strings) {
   return `<label class="spending-month-control">
     <span class="sr-only">${escapeHtml(strings.selectMonth)}</span>
     <select data-spending-month="${kind}" aria-label="${escapeHtml(strings.selectMonth)}">
+      <option value="all" ${selected === "all" ? "selected" : ""}>${escapeHtml(strings.entirePeriod)}</option>
       ${months.map((month) => `<option value="${month}" ${month === selected ? "selected" : ""}>${escapeHtml(formatMonth(`${month}-01`, language))}</option>`).join("")}
     </select>
   </label>`;
