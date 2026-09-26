@@ -173,17 +173,43 @@ impl Engine {
                 continue;
             }
 
-            let matching = requirements
-                .iter()
-                .filter_map(|(key, needed)| {
-                    ingredients.get(key).and_then(|ingredient| {
-                        (format!("food-{}", food_identity(ingredient)) == item_id)
-                            .then_some((key.clone(), *needed))
-                    })
-                })
-                .collect::<Vec<_>>();
+            // Grocery rows identify the purchasable form, which can differ from the
+            // ingredient in a recipe (for example cooked rice versus dry rice).
+            let mut matching = HashMap::<String, f64>::new();
+            let mut recipe_keys = Vec::new();
+            for (key, needed) in &requirements {
+                let Some(ingredient) = ingredients.get(key) else {
+                    continue;
+                };
+                let purchase_key = if ingredient.purchase_item_key.is_empty() {
+                    key.as_str()
+                } else {
+                    ingredient.purchase_item_key.as_str()
+                };
+                let Some(purchase_item) = ingredients.get(purchase_key) else {
+                    continue;
+                };
+                if format!("food-{}", food_identity(purchase_item)) != item_id {
+                    continue;
+                }
+                let factor = if ingredient.purchase_item_key.is_empty() {
+                    1.0
+                } else {
+                    ingredient.purchase_grams_per_gram
+                };
+                *matching.entry(purchase_key.to_string()).or_default() += needed * factor;
+                recipe_keys.push(key.clone());
+            }
             if matching.is_empty() {
                 return Err(format!("unknown grocery item: {item_id}"));
+            }
+            if !stocked {
+                for key in recipe_keys {
+                    dataset.stock.remove(&key);
+                    dataset.stock_units.remove(&key);
+                    dataset.stock_notes.remove(&key);
+                    dataset.stock_added_at.remove(&key);
+                }
             }
             for (key, needed) in matching {
                 if stocked {

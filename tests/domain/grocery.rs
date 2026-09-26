@@ -143,6 +143,20 @@ fn cooked_recipe_items_use_their_raw_purchase_reference_and_conversion() {
         .find(|item| item.name == "Raw purchase test")
         .unwrap();
     assert!((planned.needed_quantity - 50.0).abs() < 0.001);
+
+    let purchase_id = planned.id.clone();
+    let stocked = engine.set_grocery_stock(vec![purchase_id.clone()], true).unwrap();
+    assert!(!stocked.grocery.items.iter().any(|item| item.id == purchase_id));
+    assert!(stocked
+        .grocery_plan
+        .items
+        .iter()
+        .find(|item| item.id == purchase_id)
+        .unwrap()
+        .stock_sufficient);
+
+    let unstocked = engine.set_grocery_stock(vec![purchase_id.clone()], false).unwrap();
+    assert!(unstocked.grocery.items.iter().any(|item| item.id == purchase_id));
 }
 
 #[test]

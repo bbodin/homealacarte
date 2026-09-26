@@ -58,8 +58,10 @@ await command("Runtime.enable");
 await command("Page.navigate", { url: `${origin}/#grocery` });
 await waitFor(
   `document.documentElement?.dataset.appModuleLoaded === "true"
-    && document.querySelector("#grocery-spending-tab")`,
-  "the spending tab",
+    && document.querySelector("#grocery-spending-tab")
+    && globalThis.homealacarteState?.snapshot
+    && !globalThis.homealacarteState.engineBusy`,
+  "the loaded grocery view",
 );
 
 await evaluate(`(() => {
